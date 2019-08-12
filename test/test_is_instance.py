@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import builtins
-from typing import List, Optional, Union, Callable, Tuple, Dict
+from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar
 from unittest import main, TestCase
 
 from typed import is_instance
@@ -111,6 +111,44 @@ class TestIsInstance(TestCase):
             self.assertTrue(is_instance(test, Callable[[int], str]))
             self.assertFalse(is_instance(test, Callable[[str], str]))
             self.assertFalse(is_instance(test, Callable[[int], int]))
+
+    def test_is_instance_typevar(self):
+        class Animal:
+            pass
+
+        class Pet(Animal):
+            pass
+
+        class Cat(Pet):
+            pass
+
+        animal = Animal()
+        pet = Pet()
+        cat = Cat()
+
+        # test covariant
+        a = TypeVar("a", bool, Pet, covariant=True)
+        self.assertFalse(is_instance(None, a))
+        self.assertFalse(is_instance(animal, a))
+        self.assertTrue(is_instance(pet, a))
+        self.assertTrue(is_instance(cat, a))
+        self.assertTrue(is_instance(True, a))
+
+        # test contravariant
+        b = TypeVar("b", bool, Pet, contravariant=True)
+        self.assertFalse(is_instance(None, b))
+        self.assertTrue(is_instance(animal, b))
+        self.assertTrue(is_instance(pet, b))
+        self.assertFalse(is_instance(cat, b))
+        self.assertTrue(is_instance(True, b))
+
+        # test invariant
+        c = TypeVar("c", bool, Pet)
+        self.assertFalse(is_instance(None, c))
+        self.assertFalse(is_instance(animal, c))
+        self.assertTrue(is_instance(pet, c))
+        self.assertFalse(is_instance(cat, c))
+        self.assertTrue(is_instance(True, c))
 
 
 if __name__ == "__main__":
