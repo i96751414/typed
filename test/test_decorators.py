@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import *
+from typing import Callable, List
 from unittest import main, TestCase
 
 from typed import is_instance, checked, type_checked

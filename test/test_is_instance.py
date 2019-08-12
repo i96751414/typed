@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import builtins
-from typing import *
+from typing import List, Optional, Union, Callable, Tuple, Dict
 from unittest import main, TestCase
 
 from typed import is_instance

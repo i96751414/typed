@@ -4,7 +4,7 @@
 import functools
 import inspect
 import re
-from typing import *
+import typing
 
 __all__ = [
     # Functions
@@ -84,7 +84,7 @@ def is_instance(obj, obj_type):
 
     if obj_type.__class__ is type:
         return isinstance(obj, obj_type)
-    elif obj_type is Optional or obj_type is Any:
+    elif obj_type is typing.Optional or obj_type is typing.Any:
         return True
 
     origin = getattr(obj_type, "__origin__")
@@ -93,27 +93,27 @@ def is_instance(obj, obj_type):
 
     args = getattr(obj_type, "__args__")
 
-    if origin is List:
+    if origin is typing.List:
         return isinstance(obj, origin) and all([is_instance(elem, args[0]) for elem in obj])
-    elif origin is Union:
+    elif origin is typing.Union:
         return is_instance(obj, args)
-    elif origin is Dict:
+    elif origin is typing.Dict:
         return isinstance(obj, origin) and all(
             [is_instance(k, args[0]) and is_instance(v, args[1]) for k, v in obj.items()])
-    elif origin is Tuple:
+    elif origin is typing.Tuple:
         if len(args) == 2 and args[1] is Ellipsis:
             return isinstance(obj, origin) and all([is_instance(elem, args[0]) for elem in obj])
         else:
             return isinstance(obj, origin) and len(args) == len(obj) and all(
                 [is_instance(obj[i], args[i]) for i in range(len(args))])
-    if origin is Callable:
+    if origin is typing.Callable:
         if not isinstance(obj, origin):
             return False
 
         input_args = args[0:-1]
         return_type = args[-1]
         spec = inspect.getfullargspec(obj)
-        annotations = get_type_hints(obj if inspect.isfunction(obj) or inspect.ismethod(obj) else obj.__call__)
+        annotations = typing.get_type_hints(obj if inspect.isfunction(obj) or inspect.ismethod(obj) else obj.__call__)
 
         if input_args[0] is Ellipsis:
             check_input = spec.varargs is not None
@@ -141,7 +141,7 @@ def _object_type(obj_type):
 
 
 def _build_wrapper(function, _is_instance):
-    annotations = get_type_hints(function)
+    annotations = typing.get_type_hints(function)
     if not annotations:
         return function
 
