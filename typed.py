@@ -138,7 +138,7 @@ def is_instance(obj, obj_type):
             check_return = True
         return check_input and check_return
     else:
-        raise NotImplementedError(str(origin) + " with args " + str(args) + " is not supported")
+        raise NotImplementedError("{}: {} with args {} is not supported".format(repr(obj_type), str(origin), str(args)))
 
 
 def _object_type(obj_type):
