@@ -86,27 +86,33 @@ def is_instance(obj, obj_type):
         return isinstance(obj, obj_type)
     elif obj_type is typing.Optional or obj_type is typing.Any:
         return True
+    elif isinstance(obj_type, typing.TypeVar):
+        return not obj_type.__constraints__ or is_instance(obj, obj_type.__constraints__)
 
     origin = getattr(obj_type, "__origin__")
     if origin is None:
         return isinstance(obj, obj_type)
 
     args = getattr(obj_type, "__args__")
+    if not args:
+        return isinstance(obj, origin)
 
-    if obj_type.__class__ is typing.Union.__class__:
-        return is_instance(obj, args)
-    elif issubclass(obj_type, typing.List):
+    name = repr(obj_type)[7:]
+
+    if name.startswith("List"):
         return isinstance(obj, origin) and all([is_instance(elem, args[0]) for elem in obj])
-    elif issubclass(obj_type, typing.Dict):
+    elif name.startswith("Union"):
+        return is_instance(obj, args)
+    elif name.startswith("Dict"):
         return isinstance(obj, origin) and all(
             [is_instance(k, args[0]) and is_instance(v, args[1]) for k, v in obj.items()])
-    elif issubclass(obj_type, typing.Tuple):
+    elif name.startswith("Tuple"):
         if len(args) == 2 and args[1] is Ellipsis:
             return isinstance(obj, origin) and all([is_instance(elem, args[0]) for elem in obj])
         else:
             return isinstance(obj, origin) and len(args) == len(obj) and all(
                 [is_instance(obj[i], args[i]) for i in range(len(args))])
-    elif issubclass(obj_type, typing.Callable):
+    elif name.startswith("Callable"):
         if not isinstance(obj, origin):
             return False
 
