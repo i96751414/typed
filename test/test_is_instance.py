@@ -41,6 +41,7 @@ class TestIsInstance(TestCase):
     def test_is_instance_union(self):
         self.assertTrue(is_instance([1], Union[List[int], str]))
         self.assertTrue(is_instance("1", Union[int, str]))
+        self.assertTrue(is_instance("1", Union[str]))
         self.assertTrue(is_instance(1, Union[int, str]))
         self.assertFalse(is_instance(["1"], Union[List[int], str]))
         self.assertFalse(is_instance(1.1, Union[int, str]))
