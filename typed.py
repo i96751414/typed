@@ -96,7 +96,7 @@ def is_instance(obj, obj_type):
             return any([obj.__class__ in d.__mro__ for d in constraints])
         return obj.__class__ in constraints
 
-    origin = getattr(obj_type, "__origin__")
+    origin = getattr(obj_type, "__origin__", None)
     if origin is None:
         return isinstance(obj, obj_type)
 
