@@ -87,7 +87,14 @@ def is_instance(obj, obj_type):
     elif obj_type is typing.Optional or obj_type is typing.Any:
         return True
     elif isinstance(obj_type, typing.TypeVar):
-        return not obj_type.__constraints__ or is_instance(obj, obj_type.__constraints__)
+        constraints = [obj_type.__bound__] if obj_type.__bound__ else obj_type.__constraints__
+        if not constraints:
+            return True
+        if obj_type.__covariant__:
+            return any([d in obj.__class__.__mro__ for d in constraints])
+        elif obj_type.__contravariant__:
+            return any([obj.__class__ in d.__mro__ for d in constraints])
+        return obj.__class__ in constraints
 
     origin = getattr(obj_type, "__origin__")
     if origin is None:
