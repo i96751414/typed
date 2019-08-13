@@ -60,6 +60,12 @@ class TestTypeRepr(TestCase):
         for func in (d.test1, d.test2, d.test3):
             self.assertEqual(type_repr(func), "Callable[[int], str]")
 
+    def test_type_repr_set(self):
+        self.assertEqual(type_repr(set()), "Set")
+        self.assertEqual(type_repr({1}), "Set[int]")
+        self.assertEqual(type_repr({1, 1}), "Set[int]")
+        self.assertEqual(type_repr({1, ""}), "Set[Union[int, str]]")
+
 
 if __name__ == "__main__":
     main()

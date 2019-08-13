@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import builtins
-from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar
+from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar, Set
 from unittest import main, TestCase
 
 from typed import is_instance
@@ -33,6 +33,7 @@ class TestIsInstance(TestCase):
         self.assertTrue(is_instance([1, 2], List[int]))
         self.assertTrue(is_instance([], List[int]))
         self.assertTrue(is_instance([[1, 2]], List[List[int]]))
+        self.assertTrue(is_instance([1, "2"], List[Union[int, str]]))
         self.assertFalse(is_instance([1, "2"], List[int]))
         self.assertFalse(is_instance([1, 2], List[str]))
         self.assertFalse(is_instance([[1, 2]], List[List[str]]))
@@ -149,6 +150,16 @@ class TestIsInstance(TestCase):
         self.assertTrue(is_instance(pet, c))
         self.assertFalse(is_instance(cat, c))
         self.assertTrue(is_instance(True, c))
+
+    def test_is_instance_set(self):
+
+        self.assertTrue(is_instance({1, 2}, Set))
+        self.assertTrue(is_instance({1, 2}, Set[int]))
+        self.assertTrue(is_instance(set(), Set[int]))
+        self.assertTrue(is_instance({1, "2"}, Set[Union[int, str]]))
+        self.assertFalse(is_instance({1, "2"}, Set[int]))
+        self.assertFalse(is_instance({1, 2}, Set[str]))
+        self.assertFalse(is_instance(1, Set[str]))
 
 
 if __name__ == "__main__":
