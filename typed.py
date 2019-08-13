@@ -124,7 +124,7 @@ def type_repr(obj):
                     input_annotations.append(_object_type(annotations[arg]))
                 else:
                     input_annotations.append("Any")
-            input_args = ", ".join(input_annotations)
+            input_args = "[" + ", ".join(input_annotations) + "]"
         elif spec.varargs:
             input_args = "..."
         else:
@@ -136,7 +136,7 @@ def type_repr(obj):
             output_args = "Any"
 
         if input_args is not None and output_args is not None:
-            representation += "[[" + input_args + "], " + output_args + "]"
+            representation += "[" + input_args + ", " + output_args + "]"
     else:
         representation = obj.__class__.__name__
 
