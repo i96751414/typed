@@ -9,6 +9,7 @@ import typing
 __all__ = [
     # Functions
     "is_instance",
+    "type_repr",
     # Decorators
     "checked",
     "type_checked",
@@ -69,12 +70,86 @@ class _Matches:
 Matches = _Matches()
 
 
+def _object_type(obj_type):
+    obj_type_str = repr(obj_type)
+    return obj_type_str.replace("typing.", "") if "typing." in obj_type_str else obj_type.__name__
+
+
+def type_repr(obj):
+    """
+    Returns a string representation of the provided **obj** object.
+    :rtype: str
+    """
+    if isinstance(obj, list):
+        representation = "List"
+        inner = {type_repr(item) for item in obj}
+        if len(inner) == 1:
+            representation += "[" + inner.pop() + "]"
+        elif len(inner) > 1:
+            representation += "[Union[" + ", ".join(sorted(inner)) + "]]"
+    elif isinstance(obj, tuple):
+        representation = "Tuple"
+        inner = [type_repr(item) for item in obj]
+        if len(inner) == 1:
+            representation += "[" + inner[0] + "]"
+        elif len(set(inner)) == 1:
+            representation += "[" + inner[0] + ", ...]"
+        elif len(inner) > 1:
+            representation += "[" + ", ".join(sorted(inner)) + "]"
+    elif isinstance(obj, dict):
+        representation = "Dict"
+        if len(obj):
+            keys = {type_repr(k) for k in obj.keys()}
+            values = {type_repr(v) for v in obj.values()}
+
+            if len(keys) == 1:
+                keys_repr = keys.pop()
+            else:
+                keys_repr = "Union[" + ", ".join(sorted(keys)) + "]"
+            if len(values) == 1:
+                values_repr = values.pop()
+            else:
+                values_repr = "Union[" + ", ".join(sorted(values)) + "]"
+            representation += "[" + keys_repr + ", " + values_repr + "]"
+    elif inspect.isfunction(obj) or inspect.ismethod(obj):
+        representation = "Callable"
+        spec = inspect.getfullargspec(obj)
+        annotations = typing.get_type_hints(obj)
+        args = spec.args[0 if inspect.isfunction(obj) else 1:]
+
+        if args:
+            input_annotations = []
+            for arg in args:
+                if arg in annotations:
+                    input_annotations.append(_object_type(annotations[arg]))
+                else:
+                    input_annotations.append("Any")
+            input_args = ", ".join(input_annotations)
+        elif spec.varargs:
+            input_args = "..."
+        else:
+            input_args = None
+
+        if "return" in annotations:
+            output_args = _object_type(annotations["return"])
+        else:
+            output_args = "Any"
+
+        if input_args is not None and output_args is not None:
+            representation += "[[" + input_args + "], " + output_args + "]"
+    else:
+        representation = obj.__class__.__name__
+
+    return representation
+
+
 def is_instance(obj, obj_type):
     """
     Return whether an object is an instance of a class or of a subclass thereof.
     A tuple, as in ``is_instance(x, (A, B, ...))``, may be given as the target to
     check against. This is equivalent to ``is_instance(x, A) or is_instance(x, B)
     or ...`` etc.
+    :rtype: bool
     """
     if isinstance(obj_type, tuple):
         for t in obj_type:
@@ -148,11 +223,6 @@ def is_instance(obj, obj_type):
         raise NotImplementedError("{}: {} with args {} is not supported".format(repr(obj_type), str(origin), str(args)))
 
 
-def _object_type(obj_type):
-    obj_type_str = repr(obj_type)
-    return obj_type_str[7:] if obj_type_str.startswith("typing.") else obj_type.__name__
-
-
 def _build_wrapper(function, _is_instance):
     annotations = typing.get_type_hints(function)
     if not annotations:
@@ -173,7 +243,7 @@ def _build_wrapper(function, _is_instance):
 
             if not _is_instance(arg, obj_type):
                 raise ValueError("Expecting {} for arg {}. Got {}.".format(
-                    _object_type(obj_type), index + 1, arg.__class__.__name__))
+                    _object_type(obj_type), index + 1, type_repr(arg)))
 
         for name, arg in kwargs.items():
             try:
@@ -186,7 +256,7 @@ def _build_wrapper(function, _is_instance):
 
             if not _is_instance(arg, obj_type):
                 raise ValueError("Expecting {} for kwarg {}. Got {}.".format(
-                    _object_type(obj_type), name, arg.__class__.__name__))
+                    _object_type(obj_type), name, type_repr(arg)))
 
         return function(*args, **kwargs)
 
