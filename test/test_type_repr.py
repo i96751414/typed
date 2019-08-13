@@ -72,6 +72,9 @@ class TestTypeRepr(TestCase):
         self.assertEqual(type_repr(frozenset([1, 1])), "FrozenSet[int]")
         self.assertEqual(type_repr(frozenset([1, ""])), "FrozenSet[Union[int, str]]")
 
+    def test_type_repr_type(self):
+        self.assertEqual(type_repr(int), "Type[int]")
+
 
 if __name__ == "__main__":
     main()

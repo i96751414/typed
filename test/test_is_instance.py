@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import builtins
-from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar, Set, FrozenSet
+from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar, Set, FrozenSet, Type
 from unittest import main, TestCase
 
 from typed import is_instance
@@ -168,6 +168,19 @@ class TestIsInstance(TestCase):
         self.assertFalse(is_instance(frozenset([1, "2"]), FrozenSet[int]))
         self.assertFalse(is_instance(frozenset([1, 2]), FrozenSet[str]))
         self.assertFalse(is_instance(1, FrozenSet[str]))
+
+    def test_is_instance_type(self):
+        class User:
+            pass
+
+        class BasicUser(User):
+            pass
+
+        self.assertTrue(is_instance(int, Type[int]))
+        self.assertTrue(is_instance(BasicUser, Type[BasicUser]))
+        self.assertTrue(is_instance(BasicUser, Type[User]))
+        self.assertTrue(is_instance(User, Type[User]))
+        self.assertFalse(is_instance(User, Type[BasicUser]))
 
 
 if __name__ == "__main__":

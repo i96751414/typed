@@ -142,6 +142,8 @@ def type_repr(obj):
 
         if input_args is not None and output_args is not None:
             representation += "[" + input_args + ", " + output_args + "]"
+    elif isinstance(obj, type):
+        representation = "Type[" + obj.__name__ + "]"
     else:
         representation = obj.__class__.__name__
 
@@ -224,6 +226,8 @@ def is_instance(obj, obj_type):
         except KeyError:
             check_return = True
         return check_input and check_return
+    elif name.startswith("Type"):
+        return isinstance(obj, origin) and args[0] in obj.__mro__
     else:
         raise NotImplementedError("{}: {} with args {} is not supported".format(repr(obj_type), str(origin), str(args)))
 
