@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import builtins
-from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar, Set
+from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar, Set, FrozenSet
 from unittest import main, TestCase
 
 from typed import is_instance
@@ -152,7 +152,6 @@ class TestIsInstance(TestCase):
         self.assertTrue(is_instance(True, c))
 
     def test_is_instance_set(self):
-
         self.assertTrue(is_instance({1, 2}, Set))
         self.assertTrue(is_instance({1, 2}, Set[int]))
         self.assertTrue(is_instance(set(), Set[int]))
@@ -160,6 +159,15 @@ class TestIsInstance(TestCase):
         self.assertFalse(is_instance({1, "2"}, Set[int]))
         self.assertFalse(is_instance({1, 2}, Set[str]))
         self.assertFalse(is_instance(1, Set[str]))
+
+    def test_is_instance_frozenset(self):
+        self.assertTrue(is_instance(frozenset([1, 2]), FrozenSet))
+        self.assertTrue(is_instance(frozenset([1, 2]), FrozenSet[int]))
+        self.assertTrue(is_instance(frozenset(), FrozenSet[int]))
+        self.assertTrue(is_instance(frozenset([1, "2"]), FrozenSet[Union[int, str]]))
+        self.assertFalse(is_instance(frozenset([1, "2"]), FrozenSet[int]))
+        self.assertFalse(is_instance(frozenset([1, 2]), FrozenSet[str]))
+        self.assertFalse(is_instance(1, FrozenSet[str]))
 
 
 if __name__ == "__main__":

@@ -80,8 +80,13 @@ def type_repr(obj):
     Returns a string representation of the provided **obj** object.
     :rtype: str
     """
-    if isinstance(obj, (list, set)):
-        representation = "List" if isinstance(obj, list) else "Set"
+    if isinstance(obj, (list, set, frozenset)):
+        if isinstance(obj, list):
+            representation = "List"
+        elif isinstance(obj, set):
+            representation = "Set"
+        else:
+            representation = "FrozenSet"
         inner = {type_repr(item) for item in obj}
         if len(inner) == 1:
             representation += "[" + inner.pop() + "]"
@@ -181,7 +186,7 @@ def is_instance(obj, obj_type):
 
     name = repr(obj_type)[7:]
 
-    if name.startswith("List") or name.startswith("Set"):
+    if name.startswith("List") or name.startswith("Set") or name.startswith("FrozenSet"):
         return isinstance(obj, origin) and all([is_instance(elem, args[0]) for elem in obj])
     elif name.startswith("Union"):
         return is_instance(obj, args)
