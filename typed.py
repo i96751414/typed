@@ -39,7 +39,6 @@ def _cached(func):
 class _Matches:
     def __init__(self):
         self.__pattern__ = None
-        self.__origin__ = None
         self.__name__ = "Matches"
 
     @_cached
