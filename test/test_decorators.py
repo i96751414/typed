@@ -47,23 +47,23 @@ class TestDecorators(TestCase):
                 self.assertTrue(is_instance(_g, int))
 
         test([1], "b", 1, "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test(["1"], "b", 1, "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], 1, 1, "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", "1", "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, 1, "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", 1, e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e="2.2", f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e=2.2, f=1, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e=2.2, f=False, g="444", h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e=2.2, f=False, g=444, h="111")
 
     # noinspection PyTypeChecker
@@ -81,23 +81,23 @@ class TestDecorators(TestCase):
                 self.assertTrue(isinstance(_g, int))
 
         test([1], "b", 1, "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test(1, "b", 1, "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], 1, 1, "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", "1", "a", "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, 1, "b", e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", 1, e=2.2, f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e="2.2", f=False, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e=2.2, f=1, g=444, h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e=2.2, f=False, g="444", h=111)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             test([1], "b", 1, "a", "b", e=2.2, f=False, g=444, h="111")
 
     # noinspection PyTypeChecker
@@ -119,7 +119,7 @@ class TestDecorators(TestCase):
         d1 = DummyChecked1()
         for func in (d1.test1, d1.test2, d1.test3, DummyChecked1.test2, DummyChecked1.test3):
             func([1])
-            with self.assertRaises(ValueError):
+            with self.assertRaises(TypeError):
                 func("1")
 
         # noinspection PyMethodParameters,PyMethodMayBeStatic,PyNestedDecorators
@@ -157,7 +157,7 @@ class TestDecorators(TestCase):
         for func in (d2.test1, d2.test2, d2.test3, d2.test4, d2.test5,
                      DummyChecked2.test3, DummyChecked2.test4, DummyChecked2.test5):
             func([1])
-            with self.assertRaises(ValueError):
+            with self.assertRaises(TypeError):
                 func(1)
         d2.test6("1")
 
@@ -180,7 +180,7 @@ class TestDecorators(TestCase):
         d1 = DummyTypeChecked1()
         for func in (d1.test1, d1.test2, d1.test3, DummyTypeChecked1.test2, DummyTypeChecked1.test3):
             func(1)
-            with self.assertRaises(ValueError):
+            with self.assertRaises(TypeError):
                 func("1")
 
         # noinspection PyMethodParameters,PyMethodMayBeStatic,PyNestedDecorators
@@ -218,7 +218,7 @@ class TestDecorators(TestCase):
         for func in (d2.test1, d2.test2, d2.test3, d2.test4, d2.test5,
                      DummyTypeChecked2.test3, DummyTypeChecked2.test4, DummyTypeChecked2.test5):
             func(1)
-            with self.assertRaises(ValueError):
+            with self.assertRaises(TypeError):
                 func("1")
         d2.test6("1")
 

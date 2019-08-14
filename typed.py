@@ -250,7 +250,7 @@ def _build_wrapper(function, _is_instance):
                 continue
 
             if not _is_instance(arg, obj_type):
-                raise ValueError("Expecting {} for arg {}. Got {}.".format(
+                raise TypeError("Expecting {} for arg {}. Got {}.".format(
                     _object_type(obj_type), index + 1, type_repr(arg)))
 
         for name, arg in kwargs.items():
@@ -263,7 +263,7 @@ def _build_wrapper(function, _is_instance):
                 continue
 
             if not _is_instance(arg, obj_type):
-                raise ValueError("Expecting {} for kwarg {}. Got {}.".format(
+                raise TypeError("Expecting {} for kwarg {}. Got {}.".format(
                     _object_type(obj_type), name, type_repr(arg)))
 
         return function(*args, **kwargs)
