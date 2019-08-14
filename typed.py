@@ -277,15 +277,15 @@ def _checked(obj, _is_instance):
         return _build_wrapper(obj, _is_instance)
     elif isinstance(obj, (staticmethod, classmethod)):
         return obj.__class__(_build_wrapper(obj.__func__, _is_instance))
-
-    # Assuming its a class
-    for name, method in obj.__dict__.items():
-        if isinstance(method, (staticmethod, classmethod)):
-            setattr(obj, name, method.__class__(_build_wrapper(method.__func__, _is_instance)))
-        elif inspect.isfunction(method):
-            setattr(obj, name, _build_wrapper(method, _is_instance))
-
-    return obj
+    elif isinstance(obj, type):
+        for name, method in obj.__dict__.items():
+            if isinstance(method, (staticmethod, classmethod)):
+                setattr(obj, name, method.__class__(_build_wrapper(method.__func__, _is_instance)))
+            elif inspect.isfunction(method):
+                setattr(obj, name, _build_wrapper(method, _is_instance))
+        return obj
+    else:
+        raise TypeError("decorator must be applied to either functions or classes")
 
 
 def checked(function):
