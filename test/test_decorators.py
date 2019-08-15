@@ -116,8 +116,14 @@ class TestDecorators(TestCase):
             def test3(_, a: List[int]):
                 self.assertTrue(is_instance(a, List[int]))
 
+            class TestClass:
+                @staticmethod
+                def test4(a: List[int]):
+                    self.assertTrue(is_instance(a, List[int]))
+
         d1 = DummyChecked1()
-        for func in (d1.test1, d1.test2, d1.test3, DummyChecked1.test2, DummyChecked1.test3):
+        for func in (d1.test1, d1.test2, d1.test3, d1.TestClass.test4,
+                     DummyChecked1.test2, DummyChecked1.test3, DummyChecked1.TestClass.test4):
             func([1])
             with self.assertRaises(TypeError):
                 func("1")
@@ -177,8 +183,14 @@ class TestDecorators(TestCase):
             def test3(_, a: int):
                 self.assertTrue(is_instance(a, int))
 
+            class TestClass:
+                @staticmethod
+                def test4(a: int):
+                    self.assertTrue(is_instance(a, int))
+
         d1 = DummyTypeChecked1()
-        for func in (d1.test1, d1.test2, d1.test3, DummyTypeChecked1.test2, DummyTypeChecked1.test3):
+        for func in (d1.test1, d1.test2, d1.test3, d1.TestClass.test4,
+                     DummyTypeChecked1.test2, DummyTypeChecked1.test3, DummyTypeChecked1.TestClass.test4):
             func(1)
             with self.assertRaises(TypeError):
                 func("1")
