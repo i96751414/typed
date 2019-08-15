@@ -173,20 +173,20 @@ class TestDecorators(TestCase):
         @type_checked
         class DummyTypeChecked1:
             def test1(_, a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             @staticmethod
             def test2(a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             @classmethod
             def test3(_, a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             class TestClass:
                 @staticmethod
                 def test4(a: int):
-                    self.assertTrue(is_instance(a, int))
+                    self.assertTrue(isinstance(a, int))
 
         d1 = DummyTypeChecked1()
         for func in (d1.test1, d1.test2, d1.test3, d1.TestClass.test4,
@@ -199,32 +199,32 @@ class TestDecorators(TestCase):
         class DummyTypeChecked2:
             @type_checked
             def test1(_, a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             @staticmethod
             @type_checked
             def test2(a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             # Although this is not the correct way of doing it, lets test it.
             @type_checked
             @staticmethod
             def test3(a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             @classmethod
             @type_checked
             def test4(_, a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             # Although this is not the correct way of doing it, lets test it.
             @type_checked
             @classmethod
             def test5(_, a: int):
-                self.assertTrue(is_instance(a, int))
+                self.assertTrue(isinstance(a, int))
 
             def test6(_, a: int):
-                self.assertFalse(is_instance(a, int))
+                self.assertFalse(isinstance(a, int))
 
         d2 = DummyTypeChecked2()
         for func in (d2.test1, d2.test2, d2.test3, d2.test4, d2.test5,
