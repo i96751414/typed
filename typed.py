@@ -9,6 +9,7 @@ import typing
 __all__ = [
     # Functions
     "is_instance",
+    "is_type",
     "type_repr",
     # Decorators
     "checked",
@@ -169,13 +170,8 @@ def is_instance(obj, obj_type):
         return True
     elif isinstance(obj_type, typing.TypeVar):
         constraints = [obj_type.__bound__] if obj_type.__bound__ else obj_type.__constraints__
-        if not constraints:
-            return True
-        if obj_type.__covariant__:
-            return any([d in obj.__class__.__mro__ for d in constraints])
-        elif obj_type.__contravariant__:
-            return any([obj.__class__ in d.__mro__ for d in constraints])
-        return obj.__class__ in constraints
+        return is_type(obj.__class__, *constraints, covariant=obj_type.__covariant__,
+                       contravariant=obj_type.__contravariant__) if constraints else True
 
     origin = getattr(obj_type, "__origin__", None)
     if origin is None:
@@ -226,7 +222,7 @@ def is_instance(obj, obj_type):
             check_return = True
         return check_input and check_return
     elif name.startswith("Type"):
-        return isinstance(obj, origin) and args[0] in obj.__mro__
+        return isinstance(obj, origin) and is_type(obj, *args, covariant=True)
     else:
         raise NotImplementedError("{}: {} with args {} is not supported".format(repr(obj_type), str(origin), str(args)))
 
@@ -272,6 +268,21 @@ def _build_wrapper(function, _is_instance):
     return wrapper
 
 
+def is_type(child_type, *parent_type, covariant=False, contravariant=False):
+    if covariant:
+        for p in parent_type:
+            if p in child_type.__mro__:
+                return True
+    elif contravariant:
+        for p in parent_type:
+            if child_type in p.__mro__:
+                return True
+    else:
+        return child_type in parent_type
+
+    return False
+
+
 def _checked(obj, _is_instance, raises=True):
     if inspect.isfunction(obj):
         return _build_wrapper(obj, _is_instance)
@@ -279,7 +290,7 @@ def _checked(obj, _is_instance, raises=True):
         return obj.__class__(_build_wrapper(obj.__func__, _is_instance))
     elif isinstance(obj, type):
         for name, method in obj.__dict__.items():
-            if name != "_gorg":
+            if name not in ("_gorg", "__next_in_mro__"):
                 wrapped_method = _checked(method, _is_instance, raises=False)
                 if wrapped_method is not None:
                     setattr(obj, name, wrapped_method)
