@@ -279,9 +279,10 @@ def _checked(obj, _is_instance, raises=True):
         return obj.__class__(_build_wrapper(obj.__func__, _is_instance))
     elif isinstance(obj, type):
         for name, method in obj.__dict__.items():
-            wrapped_method = _checked(method, _is_instance, raises=False)
-            if wrapped_method is not None:
-                setattr(obj, name, wrapped_method)
+            if name != "_gorg":
+                wrapped_method = _checked(method, _is_instance, raises=False)
+                if wrapped_method is not None:
+                    setattr(obj, name, wrapped_method)
         return obj
     elif raises:
         raise TypeError("decorator must be applied to either functions or classes")
