@@ -10,6 +10,7 @@ __all__ = [
     # Functions
     "is_instance",
     "is_type",
+    "is_type_var",
     "type_repr",
     # Decorators
     "checked",
@@ -169,9 +170,7 @@ def is_instance(obj, obj_type):
     elif obj_type is typing.Optional or obj_type is typing.Any:
         return True
     elif isinstance(obj_type, typing.TypeVar):
-        constraints = [obj_type.__bound__] if obj_type.__bound__ else obj_type.__constraints__
-        return is_type(obj.__class__, *constraints, covariant=obj_type.__covariant__,
-                       contravariant=obj_type.__contravariant__) if constraints else True
+        return is_type_var(obj.__class__, obj_type)
 
     origin = getattr(obj_type, "__origin__", None)
     if origin is None:
@@ -236,6 +235,8 @@ def _build_wrapper(function, _is_instance):
 
     @functools.wraps(function)
     def wrapper(*args, **kwargs):
+        type_vars = {}
+
         for index, arg in enumerate(args):
             try:
                 if index < len(spec.args):
@@ -244,6 +245,12 @@ def _build_wrapper(function, _is_instance):
                     obj_type = annotations[spec.varargs]
             except KeyError:
                 continue
+
+            if isinstance(obj_type, typing.TypeVar):
+                if obj_type in type_vars:
+                    obj_type = type_vars[obj_type]
+                else:
+                    type_vars[obj_type] = type(arg)
 
             if not _is_instance(arg, obj_type):
                 raise TypeError("Expecting {} for arg {}. Got {}.".format(
@@ -258,6 +265,12 @@ def _build_wrapper(function, _is_instance):
             except KeyError:
                 continue
 
+            if isinstance(obj_type, typing.TypeVar):
+                if obj_type in type_vars:
+                    obj_type = type_vars[obj_type]
+                else:
+                    type_vars[obj_type] = type(arg)
+
             if not _is_instance(arg, obj_type):
                 raise TypeError("Expecting {} for kwarg {}. Got {}.".format(
                     _object_type(obj_type), name, type_repr(arg)))
@@ -269,6 +282,7 @@ def _build_wrapper(function, _is_instance):
 
 
 def is_type(child_type, *parent_type, covariant=False, contravariant=False):
+    # TODO: Also use __orig_bases__
     if covariant:
         for p in parent_type:
             if p in child_type.__mro__:
@@ -283,6 +297,12 @@ def is_type(child_type, *parent_type, covariant=False, contravariant=False):
     return False
 
 
+def is_type_var(child_type, type_var):
+    constraints = [type_var.__bound__] if type_var.__bound__ else type_var.__constraints__
+    return is_type(child_type, *constraints, covariant=type_var.__covariant__,
+                   contravariant=type_var.__contravariant__) if constraints else True
+
+
 def _checked(obj, _is_instance, raises=True):
     if inspect.isfunction(obj):
         return _build_wrapper(obj, _is_instance)
@@ -290,7 +310,7 @@ def _checked(obj, _is_instance, raises=True):
         return obj.__class__(_build_wrapper(obj.__func__, _is_instance))
     elif isinstance(obj, type):
         for name, method in obj.__dict__.items():
-            if name not in ("_gorg", "__next_in_mro__"):
+            if name not in ("_gorg", "__next_in_mro__", "__origin__"):
                 wrapped_method = _checked(method, _is_instance, raises=False)
                 if wrapped_method is not None:
                     setattr(obj, name, wrapped_method)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Callable, List
+from typing import Callable, List, TypeVar
 from unittest import main, TestCase
 
 from typed import is_instance, checked, type_checked
@@ -233,6 +233,30 @@ class TestDecorators(TestCase):
             with self.assertRaises(TypeError):
                 func("1")
         d2.test6("1")
+
+    # noinspection PyTypeChecker
+    def test_checked_typevar(self):
+        t = TypeVar('t', int, float)
+
+        @checked
+        def test_sum(a: t, b: t):
+            return a + b
+
+        with self.assertRaises(TypeError):
+            test_sum(1, 1.1)
+        with self.assertRaises(TypeError):
+            test_sum(1.1, 1)
+        test_sum(1, 1)
+
+        @checked
+        def test_sum_kw(**kwargs: t):
+            return sum(kwargs.values())
+
+        with self.assertRaises(TypeError):
+            test_sum_kw(a=1, b=1.1)
+        with self.assertRaises(TypeError):
+            test_sum_kw(a=1.1, b=1)
+        test_sum_kw(a=1, b=1)
 
 
 if __name__ == "__main__":
