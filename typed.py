@@ -5,6 +5,7 @@ import functools
 import inspect
 import re
 import threading
+import types
 import typing
 
 __all__ = [
@@ -370,6 +371,42 @@ def is_type_var(child_type, type_var):
                    contravariant=type_var.__contravariant__) if constraints else True
 
 
+def _check_generics_parameters(args, cls):
+    parameters = _get_parameters(cls)
+    for i, parameter in enumerate(parameters):
+        if not is_type_var(args[i], parameter):
+            raise TypeError("Generic '{}' does not accept {} constraint".format(
+                cls.__name__, _object_type(args[i])))
+
+
+def _wrap_generic(obj):
+    if hasattr(obj, "__class_getitem__"):
+        default_class_getitem = obj.__class_getitem__.__func__
+
+        @functools.wraps(default_class_getitem)
+        def __class_getitem__(cls, items):
+            if not isinstance(items, tuple):
+                items = (items,)
+
+            result = default_class_getitem(cls, items)
+            _check_generics_parameters(items, cls)
+            return result
+
+        __class_getitem__.__signature__ = inspect.signature(default_class_getitem)
+        obj.__class_getitem__ = types.MethodType(__class_getitem__, obj)
+    else:
+        default_new = obj.__new__
+
+        @functools.wraps(default_new)
+        def __new__(cls, *args, **kwargs):
+            if getattr(cls, "__args__", False):
+                _check_generics_parameters(cls.__args__, cls)
+            return default_new(cls, *args, **kwargs)
+
+        __new__.__signature__ = inspect.signature(default_new)
+        obj.__new__ = __new__
+
+
 def _checked(obj, _is_instance, raises=True):
     if inspect.isfunction(obj):
         return _build_wrapper(obj, _is_instance)
@@ -381,6 +418,8 @@ def _checked(obj, _is_instance, raises=True):
                 wrapped_method = _checked(method, _is_instance, raises=False)
                 if wrapped_method is not None:
                     setattr(obj, name, wrapped_method)
+        if is_type(obj, typing.Generic, covariant=True):
+            _wrap_generic(obj)
         return obj
     elif raises:
         raise TypeError("decorator must be applied to either functions or classes")

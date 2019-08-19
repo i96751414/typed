@@ -290,6 +290,10 @@ class TestDecorators(TestCase):
         with self.assertRaises(TypeError):
             test(c)
 
+        with self.assertRaises(TypeError):
+            # noinspection PyStatementEffect
+            Dummy[bool]()
+
 
 if __name__ == "__main__":
     main()
