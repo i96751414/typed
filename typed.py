@@ -174,6 +174,8 @@ def is_instance(obj, obj_type):
         return True
     elif isinstance(obj_type, typing.TypeVar):
         return is_type_var(obj.__class__, obj_type)
+    elif obj_type is typing.Generic:
+        return is_type(obj.__class__, typing.Generic, covariant=True)
 
     origin = getattr(obj_type, "__origin__", None)
     if origin is None:
@@ -184,7 +186,9 @@ def is_instance(obj, obj_type):
         return isinstance(obj, origin)
 
     if is_type(obj.__class__, typing.Generic, covariant=True):
-        return isinstance(obj, origin) and (not hasattr(obj, "__orig_class__") or obj.__orig_class__ is obj_type)
+        return (is_type(origin, typing.Generic, covariant=True) and
+                len(args) == len(obj.__parameters__) and
+                all([args[i] is p for i, p in enumerate(obj.__parameters__)]))
 
     name = repr(obj_type)[7:]
 
@@ -319,7 +323,8 @@ def _build_wrapper(function, _is_instance):
                     raise TypeError("Expecting {} for arg {}. Got {}.".format(
                         _object_type(obj_type), index + 1, type_repr(arg)))
 
-                if is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__"):
+                if (is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__") and
+                        hasattr(obj_type, "__parameters__")):
                     saved_hints.append(_hints.add(arg, obj_type))
 
             for name, arg in kwargs.items():
@@ -337,7 +342,8 @@ def _build_wrapper(function, _is_instance):
                     raise TypeError("Expecting {} for kwarg {}. Got {}.".format(
                         _object_type(obj_type), name, type_repr(arg)))
 
-                if is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__"):
+                if (is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__") and
+                        hasattr(obj_type, "__parameters__")):
                     saved_hints.append(_hints.add(arg, obj_type))
 
             return function(*args, **kwargs)
