@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Callable, List, TypeVar
+from typing import Callable, List, TypeVar, Generic
 from unittest import main, TestCase
 
 from typed import is_instance, checked, type_checked
@@ -257,6 +257,38 @@ class TestDecorators(TestCase):
         with self.assertRaises(TypeError):
             test_sum_kw(a=1.1, b=1)
         test_sum_kw(a=1, b=1)
+
+    def test_checked_generics(self):
+        t = TypeVar('t', int, str)
+
+        @checked
+        class Dummy(Generic[t]):
+            # noinspection PyMethodMayBeStatic
+            def get(self, data: t) -> t:
+                return data
+
+        a: Dummy[str] = Dummy[str]()
+        b: Dummy[int] = Dummy[int]()
+
+        a.get("1")
+        with self.assertRaises(TypeError):
+            # noinspection PyTypeChecker
+            a.get(1)
+
+        b.get(1)
+        with self.assertRaises(TypeError):
+            # noinspection PyTypeChecker
+            b.get("1")
+
+        c = Dummy()
+
+        @checked
+        def test(arg: Dummy[int]):
+            # noinspection PyTypeChecker
+            return arg.get("a")
+
+        with self.assertRaises(TypeError):
+            test(c)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 import functools
 import inspect
 import re
+import threading
 import typing
 
 __all__ = [
@@ -73,7 +74,8 @@ Matches = _Matches()
 
 def _object_type(obj_type):
     obj_type_str = repr(obj_type)
-    return obj_type_str.replace("typing.", "") if "typing." in obj_type_str else obj_type.__name__
+    return (obj_type_str.replace("typing.", "") if "typing." in obj_type_str
+            else getattr(obj_type, "__name__", obj_type_str))
 
 
 def type_repr(obj):
@@ -180,6 +182,9 @@ def is_instance(obj, obj_type):
     if not args:
         return isinstance(obj, origin)
 
+    if is_type(obj.__class__, typing.Generic, covariant=True):
+        return isinstance(obj, origin) and (not hasattr(obj, "__orig_class__") or obj.__orig_class__ is obj_type)
+
     name = repr(obj_type)[7:]
 
     if name.startswith("List") or name.startswith("Set") or name.startswith("FrozenSet"):
@@ -226,6 +231,56 @@ def is_instance(obj, obj_type):
         raise NotImplementedError("{}: {} with args {} is not supported".format(repr(obj_type), str(origin), str(args)))
 
 
+class _ObjHints:
+    def __init__(self):
+        self._count = 0
+        self._data = {}
+        self._lock = threading.RLock()
+
+    def add(self, obj, hint):
+        with self._lock:
+            self._count += 1
+            self._data[self._count] = (threading.get_ident(), obj, hint)
+            return self._count
+
+    def remove(self, identifier):
+        with self._lock:
+            del self._data[identifier]
+
+    def get(self, obj):
+        thread_id = threading.get_ident()
+        with self._lock:
+            for i in sorted(self._data, reverse=True):
+                t, o, h = self._data[i]
+                if t == thread_id and o is obj:
+                    return h
+        return None
+
+
+_hints = _ObjHints()
+
+
+def _get_parameters(obj):
+    if obj.__parameters__:
+        return obj.__parameters__
+    if obj.__origin__:
+        return _get_parameters(obj.__origin__)
+    return ()
+
+
+def _get_type_of_type_var(arg, obj_type, type_vars):
+    if isinstance(obj_type, typing.TypeVar):
+        if obj_type in type_vars:
+            obj_type = type_vars[obj_type]
+        else:
+            type_vars[obj_type] = type(arg)
+    return obj_type
+
+
+def _has_function(obj, function):
+    return function in obj.__class__.__dict__.values()
+
+
 def _build_wrapper(function, _is_instance):
     annotations = typing.get_type_hints(function)
     if not annotations:
@@ -236,46 +291,58 @@ def _build_wrapper(function, _is_instance):
     @functools.wraps(function)
     def wrapper(*args, **kwargs):
         type_vars = {}
+        saved_hints = []
 
-        for index, arg in enumerate(args):
-            try:
-                if index < len(spec.args):
-                    obj_type = annotations[spec.args[index]]
+        try:
+            if (len(args) > 0 and is_type(args[0].__class__, typing.Generic, covariant=True)
+                    and _has_function(args[0], wrapper)):
+                if hasattr(args[0], "__orig_class__"):
+                    clazz = args[0].__orig_class__
                 else:
-                    obj_type = annotations[spec.varargs]
-            except KeyError:
-                continue
+                    clazz = _hints.get(args[0])
+                if clazz is not None:
+                    type_vars = {k: clazz.__args__[i] for i, k in enumerate(_get_parameters(clazz))}
 
-            if isinstance(obj_type, typing.TypeVar):
-                if obj_type in type_vars:
-                    obj_type = type_vars[obj_type]
-                else:
-                    type_vars[obj_type] = type(arg)
+            for index, arg in enumerate(args):
+                try:
+                    if index < len(spec.args):
+                        obj_type = annotations[spec.args[index]]
+                    else:
+                        obj_type = annotations[spec.varargs]
+                except KeyError:
+                    continue
 
-            if not _is_instance(arg, obj_type):
-                raise TypeError("Expecting {} for arg {}. Got {}.".format(
-                    _object_type(obj_type), index + 1, type_repr(arg)))
+                obj_type = _get_type_of_type_var(arg, obj_type, type_vars)
 
-        for name, arg in kwargs.items():
-            try:
-                if name in spec.kwonlyargs:
-                    obj_type = annotations[name]
-                else:
-                    obj_type = annotations[spec.varkw]
-            except KeyError:
-                continue
+                if not _is_instance(arg, obj_type):
+                    raise TypeError("Expecting {} for arg {}. Got {}.".format(
+                        _object_type(obj_type), index + 1, type_repr(arg)))
 
-            if isinstance(obj_type, typing.TypeVar):
-                if obj_type in type_vars:
-                    obj_type = type_vars[obj_type]
-                else:
-                    type_vars[obj_type] = type(arg)
+                if is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__"):
+                    saved_hints.append(_hints.add(arg, obj_type))
 
-            if not _is_instance(arg, obj_type):
-                raise TypeError("Expecting {} for kwarg {}. Got {}.".format(
-                    _object_type(obj_type), name, type_repr(arg)))
+            for name, arg in kwargs.items():
+                try:
+                    if name in spec.kwonlyargs:
+                        obj_type = annotations[name]
+                    else:
+                        obj_type = annotations[spec.varkw]
+                except KeyError:
+                    continue
 
-        return function(*args, **kwargs)
+                obj_type = _get_type_of_type_var(arg, obj_type, type_vars)
+
+                if not _is_instance(arg, obj_type):
+                    raise TypeError("Expecting {} for kwarg {}. Got {}.".format(
+                        _object_type(obj_type), name, type_repr(arg)))
+
+                if is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__"):
+                    saved_hints.append(_hints.add(arg, obj_type))
+
+            return function(*args, **kwargs)
+        finally:
+            for hint in saved_hints:
+                _hints.remove(hint)
 
     wrapper.__signature__ = inspect.signature(function)
     return wrapper
