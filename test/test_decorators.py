@@ -267,8 +267,8 @@ class TestDecorators(TestCase):
             def get(self, data: t) -> t:
                 return data
 
-        a: Dummy[str] = Dummy[str]()
-        b: Dummy[int] = Dummy[int]()
+        a = Dummy[str]()  # type: Dummy[str]
+        b = Dummy[int]()  # type: Dummy[int]
 
         a.get("1")
         with self.assertRaises(TypeError):
