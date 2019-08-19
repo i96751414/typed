@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import builtins
-from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar, Set, FrozenSet, Type
+from typing import List, Optional, Union, Callable, Tuple, Dict, TypeVar, Set, FrozenSet, Type, Generic
 from unittest import main, TestCase
 
 from typed import is_instance
@@ -181,6 +181,21 @@ class TestIsInstance(TestCase):
         self.assertTrue(is_instance(BasicUser, Type[User]))
         self.assertTrue(is_instance(User, Type[User]))
         self.assertFalse(is_instance(User, Type[BasicUser]))
+
+    def test_is_instance_generic(self):
+        t = TypeVar('t', int, str)
+        a = TypeVar('a', int, str)
+
+        class Dummy(Generic[t]):
+            pass
+
+        for obj in (Dummy(), Dummy[int]()):
+            self.assertTrue(is_instance(obj, Generic))
+            self.assertTrue(is_instance(obj, Dummy))
+            self.assertTrue(is_instance(obj, Dummy[t]))
+            self.assertTrue(is_instance(obj, Generic[t]))
+            self.assertFalse(is_instance(obj, Generic[a]))
+            self.assertFalse(is_instance(obj, Dummy[a]))
 
 
 if __name__ == "__main__":
