@@ -10,13 +10,9 @@ import typing
 
 __all__ = [
     # Functions
-    "is_instance",
-    "is_type",
-    "is_type_var",
-    "type_repr",
+    "is_instance", "is_type", "is_type_var", "type_repr",
     # Decorators
-    "checked",
-    "type_checked",
+    "checked", "type_checked",
     # Types
     "Matches",
 ]
@@ -177,11 +173,11 @@ def is_instance(obj, obj_type):
     elif obj_type is typing.Generic:
         return is_type(obj.__class__, typing.Generic, covariant=True)
 
-    origin = getattr(obj_type, "__origin__", None)
+    origin = typing.get_origin(obj_type)
     if origin is None:
         return isinstance(obj, obj_type)
 
-    args = getattr(obj_type, "__args__")
+    args = typing.get_args(obj_type)
     if not args:
         return isinstance(obj, origin)
 

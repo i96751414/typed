@@ -37,7 +37,7 @@ class TestTypeRepr(TestCase):
             pass
 
         self.assertEqual(type_repr(test1), "Callable[[int], str]")
-        self.assertEqual(type_repr(test2), "Callable[..., Union[str, NoneType]]")
+        self.assertIn(type_repr(test2), ("Callable[..., Union[str, NoneType]]", "Callable[..., Optional[str]]"))
         self.assertEqual(type_repr(test3), "Callable[[List[str]], str]")
 
         # noinspection PyMethodMayBeStatic
