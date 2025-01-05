@@ -61,107 +61,7 @@ def validate_attribute_type(attribute, attribute_type):
 
 
 def validate_attribute(struct, attribute, attribute_type, value):
-    origin = get_origin(attribute_type)
-    if origin is Union:
-        for arg in get_args(attribute_type):
-            try:
-                validate_attribute(struct, attribute, arg, value)
-                break
-            except TypeError:
-                pass
-        else:
-            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
-                attribute_type, struct, attribute, value.__class__))
-    elif origin is tuple:
-        if not isinstance(value, origin):
-            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
-                attribute_type, struct, attribute, value.__class__))
-        args = get_args(attribute_type)
-        if len(args) != 0 and len(value) != 0 and len(args) != len(value):
-            raise TypeError("Expecting a {} type with size {} for {} '{}' attribute, but received size {}".format(
-                attribute_type, len(args), struct, attribute, len(value)))
-        for i, v in enumerate(value):
-            validate_attribute(struct, attribute, args[i], v)
-    elif origin is list:
-        if not isinstance(value, origin):
-            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
-                attribute_type, struct, attribute, value.__class__))
-        args = get_args(attribute_type)
-        if args:
-            l_type, = args
-            for v in value:
-                validate_attribute(struct, attribute + "[...]", l_type, v)
-    elif origin is dict:
-        if not isinstance(value, origin):
-            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
-                attribute_type, struct, attribute, value.__class__))
-        args = get_args(attribute_type)
-        if args:
-            k_type, v_type = args
-            for k, v in value.items():
-                validate_attribute(struct, attribute + ".<k>", k_type, k)
-                validate_attribute(struct, attribute + ".<k, v>", v_type, v)
-    elif not isinstance(value, attribute_type):
-        raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
-            attribute_type, struct, attribute, value.__class__))
-
-
-class Converter(object):
-    _exception_type = ValueError
-    _struct_type = type(None)
-
-    def __init__(self, struct):
-        self._struct = struct
-
-    def convert(self, attribute, attribute_type, value):
-        if attribute_type is not None and value is not None:
-            origin = get_origin(attribute_type)
-            if origin is Union:
-                for arg in get_args(attribute_type):
-                    try:
-                        value = self.convert(attribute, arg, value)
-                        break
-                    except self._exception_type:
-                        pass
-                else:
-                    self._fail_convertion(attribute, value, attribute_type)
-            elif origin is tuple:
-                if not isinstance(value, origin):
-                    self._fail_convertion(attribute, value, origin)
-                args = get_args(attribute_type)
-                if args:
-                    if len(args) != len(value):
-                        self._fail_convertion(attribute, value, origin)
-                    value = tuple(self.convert(attribute + "[" + str(i) + "]", args[i], v)
-                                  for i, v in enumerate(value))
-            elif origin is list:
-                if not isinstance(value, origin):
-                    self._fail_convertion(attribute, value, origin)
-                args = get_args(attribute_type)
-                if args:
-                    l_type, = args
-                    value = [self.convert(attribute + "[...]", l_type, v) for v in value]
-            elif origin is dict:
-                if not isinstance(value, origin):
-                    self._fail_convertion(attribute, value, origin)
-                args = get_args(attribute_type)
-                if args:
-                    k_type, v_type = args
-                    value = {self.convert(attribute + ".<k>", k_type, k):
-                                 self.convert(attribute + ".<k, v>", v_type, v)
-                             for k, v in value.items()}
-            elif isinstance(attribute_type, type) and issubclass(attribute_type, self._struct_type):
-                value = self._convert_data_struct(attribute_type, value)
-
-        return value
-
-    def _fail_convertion(self, attribute, actual_value, expected_type):
-        raise self._exception_type(
-            "Unexpected value type for {} attribute '{}'. Expecting {} but actual type is {}".format(
-                self._struct, attribute, expected_type, actual_value.__class__))
-
-    def _convert_data_struct(self, attribute_type, value):
-        raise NotImplemented("Method must be implemented by subclasses")
+    AttributeValidator(struct).handle(attribute, attribute_type, value)
 
 
 class DataStruct(object):
@@ -197,7 +97,7 @@ class DataStruct(object):
                     except ValueError as e:
                         raise ValueError("Failed to convert {} {}: {}".format(cls.__name__, attribute, e))
 
-                obj.__setattr__(attribute, default_converter.convert(attribute, attribute_type, value))
+                obj.__setattr__(attribute, default_converter.handle(attribute, attribute_type, value))
             else:
                 if params.default.has_value:
                     obj.__setattr__(attribute, params.default.value)
@@ -237,7 +137,7 @@ class DataStruct(object):
 
     def to_dict(self):
         default_converter = ConverterTo(self.__class__.__name__)
-        return {attribute: default_converter.convert(attribute, attribute_type, self.__dict__.get(attribute))
+        return {attribute: default_converter.handle(attribute, attribute_type, self.__dict__.get(attribute))
                 for attribute, attribute_type, _ in self.attributes()}
 
     def __init__(self, **kwargs):
@@ -248,22 +148,6 @@ class DataStruct(object):
 
     def __repr__(self):
         return str(self.to_dict())
-
-
-class ConverterFrom(Converter):
-    _exception_type = ValueError
-    _struct_type = DataStruct
-
-    def _convert_data_struct(self, attribute_type, value):
-        return attribute_type.from_dict(value) if isinstance(value, dict) else value
-
-
-class ConverterTo(Converter):
-    _exception_type = RuntimeError
-    _struct_type = DataStruct
-
-    def _convert_data_struct(self, attribute_type, value):
-        return value.to_dict()
 
 
 class JSONStruct(DataStruct):
@@ -280,6 +164,132 @@ class JSONStruct(DataStruct):
 
     def dumps(self, **kwargs):
         return json.dumps(self.to_dict(), **kwargs)
+
+
+class AttributeTypeHandler(object):
+    _handle_exception_type = ValueError
+    _size_exception_type = ValueError
+
+    def __init__(self, name):
+        self._name = name
+
+    def handle(self, attribute, attribute_type, value):
+        origin = get_origin(attribute_type)
+        if origin is Union:
+            value = self._handle_union(attribute, attribute_type, value)
+        elif origin is tuple:
+            value = self._handle_tuple(attribute, attribute_type, value)
+        elif origin is list:
+            value = self._handle_list(attribute, attribute_type, value)
+        elif origin is dict:
+            value = self._handle_dict(attribute, attribute_type, value)
+        else:
+            value = self._handle_extra(attribute, attribute_type, value)
+        return value
+
+    def _handle_union(self, attribute, attribute_type, value):
+        for arg in get_args(attribute_type):
+            try:
+                return self.handle(attribute, arg, value)
+            except (self._handle_exception_type, self._size_exception_type):
+                pass
+        self._fail_handle(attribute, attribute_type, value)
+
+    def _handle_tuple(self, attribute, attribute_type, value):
+        if not isinstance(value, tuple):
+            self._fail_handle(attribute, tuple, value)
+        args = get_args(attribute_type)
+        if args and value:
+            self._validate_size(attribute, len(args), len(value))
+            value = self._handle_inner(tuple, (
+                self.handle(attribute + "[" + str(i) + "]", args[i], v)
+                for i, v in enumerate(value)))
+        return value
+
+    def _handle_list(self, attribute, attribute_type, value):
+        if not isinstance(value, list):
+            self._fail_handle(attribute, list, value)
+        args = get_args(attribute_type)
+        if args and value:
+            l_type, = args
+            value = self._handle_inner(list, (self.handle(attribute + "[...]", l_type, v) for v in value))
+        return value
+
+    def _handle_dict(self, attribute, attribute_type, value):
+        if not isinstance(value, dict):
+            self._fail_handle(attribute, dict, value)
+        args = get_args(attribute_type)
+        if args and value:
+            k_type, v_type = args
+            value = self._handle_inner(dict, (
+                (self.handle(attribute + ".<k>", k_type, k), self.handle(attribute + ".<k, v>", v_type, v))
+                for k, v in value.items()))
+        return value
+
+    def _handle_extra(self, attribute, attribute_type, value):
+        raise NotImplemented("_handle_extra method must be implemented by subclasses")
+
+    def _handle_inner(self, parent_type, inner_values):
+        raise NotImplemented("_handle_inner method must be implemented by subclasses")
+
+    def _fail_handle(self, actual_value, attribute, expected_type):
+        raise self._handle_exception_type(
+            "Unexpected value type for {} attribute '{}'. Expecting {} but actual type is {}".format(
+                self._name, attribute, expected_type, actual_value.__class__))
+
+    def _validate_size(self, attribute, expected_size, actual_size):
+        if expected_size != actual_size:
+            raise self._size_exception_type(
+                "Unexpected size for {} attribute '{}. Expecting {} but actual size is {}".format(
+                    self._name, attribute, expected_size, actual_size))
+
+
+class AttributeValidator(AttributeTypeHandler):
+    _handle_exception_type = TypeError
+    _size_exception_type = TypeError
+
+    def _handle_extra(self, attribute, attribute_type, value):
+        if not isinstance(value, attribute_type):
+            self._fail_handle(attribute, attribute_type, value)
+
+    def _handle_inner(self, parent_type, inner_values):
+        for _ in inner_values:
+            pass
+
+
+class Converter(AttributeTypeHandler):
+    _struct_type = type(None)
+
+    def _handle_extra(self, attribute, attribute_type, value):
+        if isinstance(attribute_type, type) and issubclass(attribute_type, self._struct_type):
+            value = self._convert_data_struct(attribute_type, value)
+        elif not isinstance(value, attribute_type):
+            self._fail_handle(attribute, attribute_type, value)
+        return value
+
+    def _handle_inner(self, parent_type, inner_values):
+        return parent_type(inner_values)
+
+    def _convert_data_struct(self, attribute_type, value):
+        raise NotImplemented("Method must be implemented by subclasses")
+
+
+class ConverterFrom(Converter):
+    _handle_exception_type = ValueError
+    _size_exception_type = ValueError
+    _struct_type = DataStruct
+
+    def _convert_data_struct(self, attribute_type, value):
+        return attribute_type.from_dict(value) if isinstance(value, dict) else value
+
+
+class ConverterTo(Converter):
+    _handle_exception_type = RuntimeError
+    _size_exception_type = RuntimeError
+    _struct_type = DataStruct
+
+    def _convert_data_struct(self, attribute_type, value):
+        return value.to_dict()
 
 
 def _cached(func):
