@@ -15,6 +15,8 @@ class TestValidAttribute(TestCase):
             validate_attribute("struct", "attribute", Union[int, float], 1.0)
             validate_attribute("struct", "attribute", List[bool], [])
             validate_attribute("struct", "attribute", List[bool], [True])
+            validate_attribute("struct", "attribute", Tuple[()], ())
+            validate_attribute("struct", "attribute", Tuple[int, ...], (1, 2, 3))
             validate_attribute("struct", "attribute", Tuple[int, float, CustomType], ())
             validate_attribute("struct", "attribute", Tuple[int, float, CustomType], (1, 1.0, CustomType()))
             validate_attribute("struct", "attribute", Dict[str, List[CustomType]], {})
@@ -42,6 +44,10 @@ class TestValidAttribute(TestCase):
             validate_attribute("struct", "attribute", List[bool], True)
         with self.assertRaises(TypeError):
             validate_attribute("struct", "attribute", List[bool], [1])
+        with self.assertRaises(TypeError):
+            validate_attribute("struct", "attribute", Tuple[()], (1,))
+        with self.assertRaises(TypeError):
+            validate_attribute("struct", "attribute", Tuple[int, ...], (1, 2, "3"))
         with self.assertRaises(TypeError):
             validate_attribute("struct", "attribute", Tuple[int, float, CustomType], (1, 1.0))
         with self.assertRaises(TypeError):

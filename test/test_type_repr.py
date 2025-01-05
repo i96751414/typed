@@ -15,9 +15,10 @@ class TestTypeRepr(TestCase):
         self.assertEqual(type_repr([1, ""]), "List[Union[int, str]]")
 
     def test_type_repr_tuple(self):
-        self.assertEqual(type_repr(tuple()), "Tuple")
+        self.assertEqual(type_repr(tuple()), "Tuple[()]")
         self.assertEqual(type_repr((1,)), "Tuple[int]")
         self.assertEqual(type_repr((1, 1)), "Tuple[int, ...]")
+        self.assertEqual(type_repr((1, 1, 1)), "Tuple[int, ...]")
         self.assertEqual(type_repr((1, "")), "Tuple[int, str]")
 
     def test_type_repr_dict(self):
@@ -36,9 +37,17 @@ class TestTypeRepr(TestCase):
         def test3(_: typing.List[str]) -> str:
             pass
 
+        def test4(**_: str) -> int:
+            pass
+
+        def test5(_: bool, *__: int, **___: str) -> typing.Dict[str, typing.Union[int, str]]:
+            pass
+
         self.assertEqual(type_repr(test1), "Callable[[int], str]")
-        self.assertIn(type_repr(test2), ("Callable[..., Union[str, NoneType]]", "Callable[..., Optional[str]]"))
+        self.assertIn(type_repr(test2), "Callable[..., Optional[str]]")
         self.assertEqual(type_repr(test3), "Callable[[List[str]], str]")
+        self.assertEqual(type_repr(test4), "Callable[..., int]")
+        self.assertEqual(type_repr(test5), "Callable[..., Dict[str, Union[int, str]]]")
 
         # noinspection PyMethodMayBeStatic
         class Dummy:

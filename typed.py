@@ -7,7 +7,8 @@ import json
 import threading
 import types
 import typing
-from typing import NamedTuple, Callable, List, Tuple, Type, TypeVar, Optional, Union, get_origin, get_args
+from typing import NamedTuple, Callable, List, Tuple, Type, TypeVar, Optional, Union, \
+    get_origin, get_args, get_type_hints
 
 try:
     from collections.abc import Hashable
@@ -195,19 +196,25 @@ class AttributeTypeHandler(object):
         self._fail_handle(attribute, attribute_type, value)
 
     def _handle_tuple(self, attribute, attribute_type, value):
-        if not isinstance(value, tuple):
-            self._fail_handle(attribute, tuple, value)
+        self._validate_instance(attribute, tuple, value)
         args = get_args(attribute_type)
-        if args and value:
-            self._validate_size(attribute, len(args), len(value))
-            value = self._handle_inner(tuple, (
-                self.handle(attribute + "[" + str(i) + "]", args[i], v)
-                for i, v in enumerate(value)))
+        if args:
+            if args[-1] is Ellipsis:
+                t_type, _ = args
+                value = self._handle_inner(tuple, (
+                    self.handle(attribute + "[" + str(i) + "]", t_type, v)
+                    for i, v in enumerate(value)))
+            elif args == ((),):
+                self._validate_size(attribute, 0, len(value))
+            else:
+                self._validate_size(attribute, len(args), len(value))
+                value = self._handle_inner(tuple, (
+                    self.handle(attribute + "[" + str(i) + "]", args[i], v)
+                    for i, v in enumerate(value)))
         return value
 
     def _handle_list(self, attribute, attribute_type, value):
-        if not isinstance(value, list):
-            self._fail_handle(attribute, list, value)
+        self._validate_instance(attribute, list, value)
         args = get_args(attribute_type)
         if args and value:
             l_type, = args
@@ -215,8 +222,7 @@ class AttributeTypeHandler(object):
         return value
 
     def _handle_dict(self, attribute, attribute_type, value):
-        if not isinstance(value, dict):
-            self._fail_handle(attribute, dict, value)
+        self._validate_instance(attribute, dict, value)
         args = get_args(attribute_type)
         if args and value:
             k_type, v_type = args
@@ -231,7 +237,11 @@ class AttributeTypeHandler(object):
     def _handle_inner(self, parent_type, inner_values):
         raise NotImplemented("_handle_inner method must be implemented by subclasses")
 
-    def _fail_handle(self, actual_value, attribute, expected_type):
+    def _validate_instance(self, attribute, attribute_type, value):
+        if not isinstance(value, attribute_type):
+            self._fail_handle(attribute, attribute_type, value)
+
+    def _fail_handle(self, attribute, expected_type, actual_value):
         raise self._handle_exception_type(
             "Unexpected value type for {} attribute '{}'. Expecting {} but actual type is {}".format(
                 self._name, attribute, expected_type, actual_value.__class__))
@@ -291,85 +301,106 @@ class ConverterTo(Converter):
         return value.to_dict()
 
 
-def _object_type(obj_type):
-    obj_type_str = repr(obj_type)
-    return (obj_type_str.replace("typing.", "") if "typing." in obj_type_str
-            else getattr(obj_type, "__name__", obj_type_str))
-
-
 def type_repr(obj):
     """
     Returns a string representation of the provided **obj** object.
     :rtype: str
     """
-    if isinstance(obj, (list, set, frozenset)):
-        if isinstance(obj, list):
-            representation = "List"
-        elif isinstance(obj, set):
-            representation = "Set"
-        else:
-            representation = "FrozenSet"
-        inner = {type_repr(item) for item in obj}
-        if len(inner) == 1:
-            representation += "[" + inner.pop() + "]"
-        elif len(inner) > 1:
-            representation += "[Union[" + ", ".join(sorted(inner)) + "]]"
+    if isinstance(obj, list):
+        representation = _type_repr_dynamic_inner_types("List", obj)
+    elif isinstance(obj, set):
+        representation = _type_repr_dynamic_inner_types("Set", obj)
+    elif isinstance(obj, frozenset):
+        representation = _type_repr_dynamic_inner_types("FrozenSet", obj)
     elif isinstance(obj, tuple):
-        representation = "Tuple"
-        inner = [type_repr(item) for item in obj]
-        if len(inner) == 1:
-            representation += "[" + inner[0] + "]"
-        elif len(set(inner)) == 1:
-            representation += "[" + inner[0] + ", ...]"
-        elif len(inner) > 1:
-            representation += "[" + ", ".join(sorted(inner)) + "]"
+        representation = _type_repr_fixed_inner_types("Tuple", obj)
     elif isinstance(obj, dict):
-        representation = "Dict"
-        if len(obj):
-            keys = {type_repr(k) for k in obj.keys()}
-            values = {type_repr(v) for v in obj.values()}
-
-            if len(keys) == 1:
-                keys_repr = keys.pop()
-            else:
-                keys_repr = "Union[" + ", ".join(sorted(keys)) + "]"
-            if len(values) == 1:
-                values_repr = values.pop()
-            else:
-                values_repr = "Union[" + ", ".join(sorted(values)) + "]"
-            representation += "[" + keys_repr + ", " + values_repr + "]"
-    elif inspect.isfunction(obj) or inspect.ismethod(obj):
-        representation = "Callable"
-        spec = inspect.getfullargspec(obj)
-        annotations = typing.get_type_hints(obj)
-        args = spec.args[0 if inspect.isfunction(obj) else 1:]
-
-        if args:
-            input_annotations = []
-            for arg in args:
-                if arg in annotations:
-                    input_annotations.append(_object_type(annotations[arg]))
-                else:
-                    input_annotations.append("Any")
-            input_args = "[" + ", ".join(input_annotations) + "]"
-        elif spec.varargs:
-            input_args = "..."
-        else:
-            input_args = None
-
-        if "return" in annotations:
-            output_args = _object_type(annotations["return"])
-        else:
-            output_args = "Any"
-
-        if input_args is not None and output_args is not None:
-            representation += "[" + input_args + ", " + output_args + "]"
+        representation = _type_repr_dict(obj)
+    elif inspect.isfunction(obj):
+        representation = _type_repr_callable(obj, is_method=False)
+    elif inspect.ismethod(obj):
+        representation = _type_repr_callable(obj, is_method=True)
     elif isinstance(obj, type):
         representation = "Type[" + obj.__name__ + "]"
     else:
         representation = obj.__class__.__name__
 
     return representation
+
+
+def _type_repr_dynamic_inner_types(parent_repr, obj):
+    representation = parent_repr
+    inner = {type_repr(item) for item in obj}
+    if len(inner) == 1:
+        representation += "[" + inner.pop() + "]"
+    elif len(inner) > 1:
+        representation += "[Union[" + ", ".join(sorted(inner)) + "]]"
+    return representation
+
+
+def _type_repr_fixed_inner_types(parent_repr, obj):
+    representation = parent_repr
+    inner = [type_repr(item) for item in obj]
+    if len(inner) == 0:
+        representation += "[()]"
+    elif len(inner) == 1:
+        representation += "[" + inner[0] + "]"
+    elif all(i == inner[0] for i in inner):
+        representation += "[" + inner[0] + ", ...]"
+    else:
+        representation += "[" + ", ".join(inner) + "]"
+    return representation
+
+
+def _type_repr_dict(obj):
+    representation = "Dict"
+    if obj:
+        keys = {type_repr(k) for k in obj.keys()}
+        values = {type_repr(v) for v in obj.values()}
+        keys_repr = keys.pop() if len(keys) == 1 else "Union[" + ", ".join(sorted(keys)) + "]"
+        values_repr = values.pop() if len(values) == 1 else "Union[" + ", ".join(sorted(values)) + "]"
+        representation += "[" + keys_repr + ", " + values_repr + "]"
+    return representation
+
+
+def _type_repr_callable(obj, is_method=False):
+    representation = "Callable"
+    spec = inspect.getfullargspec(obj)
+    annotations = get_type_hints(obj)
+    args = spec.args[1 if is_method else 0:]
+
+    if spec.varargs or spec.varkw:
+        input_args = "..."
+    elif args:
+        input_annotations = (
+            "Any" if annotation is None else _type_hint_repr(annotation)
+            for annotation in (annotations.get(arg) for arg in args))
+        input_args = "[" + ", ".join(input_annotations) + "]"
+    else:
+        input_args = "[]"
+
+    return_annotation = annotations.get("return")
+    output_args = "Any" if return_annotation is None else _type_hint_repr(return_annotation)
+    representation += "[" + input_args + ", " + output_args + "]"
+    return representation
+
+
+def _type_hint_repr(obj_type):
+    if isinstance(obj_type, type):
+        type_hint_repr = obj_type.__name__
+    else:
+        origin = get_origin(obj_type)
+        if origin:
+            args = get_args(obj_type)
+            if origin is Union and type(None) in args:
+                origin_name = "Optional"
+                args = (a for a in args if a is not type(None))
+            else:
+                origin_name = getattr(obj_type, "_name", None) or _type_hint_repr(origin)
+            type_hint_repr = origin_name + "[" + ", ".join(_type_hint_repr(a) for a in args) + "]"
+        else:
+            type_hint_repr = getattr(obj_type, "_name", None) or repr(obj_type)
+    return type_hint_repr
 
 
 def is_instance(obj, obj_type):
@@ -381,10 +412,7 @@ def is_instance(obj, obj_type):
     :rtype: bool
     """
     if isinstance(obj_type, tuple):
-        for t in obj_type:
-            if is_instance(obj, t):
-                return True
-        return False
+        return any(is_instance(obj, t) for t in obj_type)
 
     if obj_type.__class__ is type:
         return isinstance(obj, obj_type)
@@ -539,7 +567,7 @@ def _build_wrapper(function, _is_instance):
 
                 if not _is_instance(arg, obj_type):
                     raise TypeError("Expecting {} for arg {}. Got {}.".format(
-                        _object_type(obj_type), index + 1, type_repr(arg)))
+                        _type_hint_repr(obj_type), index + 1, type_repr(arg)))
 
                 if (is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__") and
                         hasattr(obj_type, "__parameters__")):
@@ -558,7 +586,7 @@ def _build_wrapper(function, _is_instance):
 
                 if not _is_instance(arg, obj_type):
                     raise TypeError("Expecting {} for kwarg {}. Got {}.".format(
-                        _object_type(obj_type), name, type_repr(arg)))
+                        _type_hint_repr(obj_type), name, type_repr(arg)))
 
                 if (is_type(arg.__class__, typing.Generic, covariant=True) and not hasattr(arg, "__orig_class__") and
                         hasattr(obj_type, "__parameters__")):
@@ -576,17 +604,12 @@ def _build_wrapper(function, _is_instance):
 def is_type(child_type, *parent_type, covariant=False, contravariant=False):
     # TODO: Also use __orig_bases__
     if covariant:
-        for p in parent_type:
-            if p in child_type.__mro__:
-                return True
+        ret = any(p in child_type.__mro__ for p in parent_type)
     elif contravariant:
-        for p in parent_type:
-            if child_type in p.__mro__:
-                return True
+        ret = any(child_type in p.__mro__ for p in parent_type)
     else:
-        return child_type in parent_type
-
-    return False
+        ret = child_type in parent_type
+    return ret
 
 
 def is_type_var(child_type, type_var):
@@ -600,7 +623,7 @@ def _check_generics_parameters(args, cls):
     for i, parameter in enumerate(parameters):
         if not is_type_var(args[i], parameter):
             raise TypeError("Generic '{}' does not accept {} constraint".format(
-                cls.__name__, _object_type(args[i])))
+                cls.__name__, _type_hint_repr(args[i])))
 
 
 def _wrap_generic(obj):
