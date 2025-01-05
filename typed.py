@@ -4,7 +4,6 @@
 import functools
 import inspect
 import json
-import re
 import threading
 import types
 import typing
@@ -21,8 +20,6 @@ __all__ = [
     "is_nullable", "validate_attribute_type", "validate_attribute",
     # Decorators
     "checked", "type_checked",
-    # Types
-    "Matches",
     # Classes
     "DataStruct", "JSONStruct",
 ]
@@ -292,57 +289,6 @@ class ConverterTo(Converter):
 
     def _convert_data_struct(self, attribute_type, value):
         return value.to_dict()
-
-
-def _cached(func):
-    """
-    Internal wrapper caching __getitem__ of generic types with a fallback to
-    original function for non-hashable arguments.
-    """
-    cached = functools.lru_cache()(func)
-
-    @functools.wraps(func)
-    def inner(*args, **kwargs):
-        try:
-            return cached(*args, **kwargs)
-        except TypeError:
-            pass
-        return func(*args, **kwargs)
-
-    return inner
-
-
-class _Matches:
-    def __init__(self):
-        self.__pattern__ = None
-        self.__name__ = "Matches"
-
-    @_cached
-    def __getitem__(self, item):
-        if not isinstance(item, (str, bytes)):
-            raise TypeError("{0} must be used as {0}[AnyStr]".format(self.__name__))
-        obj = self.__class__()
-        obj.__pattern__ = re.compile(item)
-        return obj
-
-    def __instancecheck__(self, instance):
-        if self.__pattern__ is None:
-            return False
-        try:
-            return self.__pattern__.match(instance) is not None
-        except TypeError:
-            return False
-
-    def __repr__(self):
-        if self.__pattern__:
-            return "{}[{}]".format(self.__name__, repr(self.__pattern__.pattern))
-        return self.__name__
-
-    def __call__(self, *args, **kwargs):
-        raise TypeError("Cannot instantiate " + self.__name__)
-
-
-Matches = _Matches()
 
 
 def _object_type(obj_type):
