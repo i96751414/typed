@@ -47,6 +47,20 @@ class TestDataStruct(TestCase):
         with self.assertRaises(ValueError):
             A.from_dict(dict(var_1=1, var_2=2))
 
+    def test_from_dict_no_types(self):
+        class A(DataStruct):
+            var_1 = DataStruct.attr("var1")
+            var_2 = DataStruct.attr("var2", default="var2")
+            var_3 = DataStruct.attr("var3", default=None, from_converter=lambda _: "var3")
+            var_4 = DataStruct.attr("var4", default=None, from_converter=lambda _: "var4")
+
+        a = A.from_dict(dict(var1=1, var4=None))
+
+        self.assertEqual(a.var_1, 1)
+        self.assertEqual(a.var_2, "var2")
+        self.assertIsNone(a.var_3)
+        self.assertEqual(a.var_4, "var4")
+
     def test_missing_value(self):
         class A(DataStruct):
             missing = DataStruct.attr("missing", str)

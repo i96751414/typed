@@ -91,13 +91,15 @@ class DataStruct(object):
             # We can use obj as sentinel as well
             value = data.get(attribute, obj)
             if value is not obj:
-                if params.from_converter and not (is_nullable(attribute_type) and value is None):
+                if params.from_converter and not (attribute_type and is_nullable(attribute_type) and value is None):
                     try:
                         value = params.from_converter(value)
                     except ValueError as e:
                         raise ValueError("Failed to convert {} {}: {}".format(cls.__name__, attribute, e))
 
-                obj.__setattr__(attribute, default_converter.handle(attribute, attribute_type, value))
+                if attribute_type:
+                    value = default_converter.handle(attribute, attribute_type, value)
+                obj.__setattr__(attribute, value)
             else:
                 if params.default.has_value:
                     obj.__setattr__(attribute, params.default.value)
