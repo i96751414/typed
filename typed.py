@@ -3,19 +3,283 @@
 
 import functools
 import inspect
+import json
 import re
 import threading
 import types
 import typing
+from typing import NamedTuple, Callable, List, Tuple, Type, TypeVar, Optional, Union, get_origin, get_args
+
+try:
+    from collections.abc import Hashable
+except ImportError:
+    from typing import Hashable
 
 __all__ = [
     # Functions
     "is_instance", "is_type", "is_type_var", "type_repr",
+    "is_nullable", "validate_attribute_type", "validate_attribute",
     # Decorators
     "checked", "type_checked",
     # Types
     "Matches",
+    # Classes
+    "DataStruct", "JSONStruct",
 ]
+
+T = TypeVar("T")
+
+DefaultValue = NamedTuple("DefaultValue", (("has_value", bool), ("value", any)))
+Params = NamedTuple("Params", (("from_converter", Optional[Callable]), ("default", DefaultValue)))
+
+
+def is_nullable(attribute_type):
+    return attribute_type is type(None) or (
+            get_origin(attribute_type) is Union and type(None) in get_args(attribute_type))
+
+
+def validate_attribute_type(attribute, attribute_type):
+    origin = get_origin(attribute_type)
+    if origin in (Union, tuple):
+        for arg in get_args(attribute_type):
+            validate_attribute_type(attribute, arg)
+    elif origin is list:
+        args = get_args(attribute_type)
+        if args:
+            l_type, = args
+            validate_attribute_type(attribute, l_type)
+    elif origin is dict:
+        args = get_args(attribute_type)
+        if args:
+            k_type, v_type = args
+            validate_attribute_type(attribute, k_type)
+            if not issubclass(get_origin(k_type) or k_type, Hashable):
+                raise TypeError("Map keys must be hashable")
+            validate_attribute_type(attribute, v_type)
+    elif type(attribute_type) is not type:
+        raise TypeError("Invalid type provided {} for attribute {}".format(attribute_type, attribute))
+
+
+def validate_attribute(struct, attribute, attribute_type, value):
+    origin = get_origin(attribute_type)
+    if origin is Union:
+        for arg in get_args(attribute_type):
+            try:
+                validate_attribute(struct, attribute, arg, value)
+                break
+            except TypeError:
+                pass
+        else:
+            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
+                attribute_type, struct, attribute, value.__class__))
+    elif origin is tuple:
+        if not isinstance(value, origin):
+            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
+                attribute_type, struct, attribute, value.__class__))
+        args = get_args(attribute_type)
+        if len(args) != 0 and len(value) != 0 and len(args) != len(value):
+            raise TypeError("Expecting a {} type with size {} for {} '{}' attribute, but received size {}".format(
+                attribute_type, len(args), struct, attribute, len(value)))
+        for i, v in enumerate(value):
+            validate_attribute(struct, attribute, args[i], v)
+    elif origin is list:
+        if not isinstance(value, origin):
+            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
+                attribute_type, struct, attribute, value.__class__))
+        args = get_args(attribute_type)
+        if args:
+            l_type, = args
+            for v in value:
+                validate_attribute(struct, attribute + "[...]", l_type, v)
+    elif origin is dict:
+        if not isinstance(value, origin):
+            raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
+                attribute_type, struct, attribute, value.__class__))
+        args = get_args(attribute_type)
+        if args:
+            k_type, v_type = args
+            for k, v in value.items():
+                validate_attribute(struct, attribute + ".<k>", k_type, k)
+                validate_attribute(struct, attribute + ".<k, v>", v_type, v)
+    elif not isinstance(value, attribute_type):
+        raise TypeError("Expecting a {} type for {} '{}' attribute, but received {}".format(
+            attribute_type, struct, attribute, value.__class__))
+
+
+class Converter(object):
+    _exception_type = ValueError
+    _struct_type = type(None)
+
+    def __init__(self, struct):
+        self._struct = struct
+
+    def convert(self, attribute, attribute_type, value):
+        if attribute_type is not None and value is not None:
+            origin = get_origin(attribute_type)
+            if origin is Union:
+                for arg in get_args(attribute_type):
+                    try:
+                        value = self.convert(attribute, arg, value)
+                        break
+                    except self._exception_type:
+                        pass
+                else:
+                    self._fail_convertion(attribute, value, attribute_type)
+            elif origin is tuple:
+                if not isinstance(value, origin):
+                    self._fail_convertion(attribute, value, origin)
+                args = get_args(attribute_type)
+                if args:
+                    if len(args) != len(value):
+                        self._fail_convertion(attribute, value, origin)
+                    value = tuple(self.convert(attribute + "[" + str(i) + "]", args[i], v)
+                                  for i, v in enumerate(value))
+            elif origin is list:
+                if not isinstance(value, origin):
+                    self._fail_convertion(attribute, value, origin)
+                args = get_args(attribute_type)
+                if args:
+                    l_type, = args
+                    value = [self.convert(attribute + "[...]", l_type, v) for v in value]
+            elif origin is dict:
+                if not isinstance(value, origin):
+                    self._fail_convertion(attribute, value, origin)
+                args = get_args(attribute_type)
+                if args:
+                    k_type, v_type = args
+                    value = {self.convert(attribute + ".<k>", k_type, k):
+                                 self.convert(attribute + ".<k, v>", v_type, v)
+                             for k, v in value.items()}
+            elif isinstance(attribute_type, type) and issubclass(attribute_type, self._struct_type):
+                value = self._convert_data_struct(attribute_type, value)
+
+        return value
+
+    def _fail_convertion(self, attribute, actual_value, expected_type):
+        raise self._exception_type(
+            "Unexpected value type for {} attribute '{}'. Expecting {} but actual type is {}".format(
+                self._struct, attribute, expected_type, actual_value.__class__))
+
+    def _convert_data_struct(self, attribute_type, value):
+        raise NotImplemented("Method must be implemented by subclasses")
+
+
+class DataStruct(object):
+    _SPEC_FIELD = "_spec"
+
+    @classmethod
+    def attributes(cls) -> List[Tuple[str, type, Params]]:
+        return [attr for attr in (
+            getattr(value.fset, cls._SPEC_FIELD, None)
+            for clazz in cls.__mro__
+            for value in clazz.__dict__.values()
+            if isinstance(value, property) and value.fget is not None and value.fset is not None
+        ) if attr is not None]
+
+    @classmethod
+    def from_dict(cls, data, strict=False):
+        if strict:
+            difference = set(data).difference({attribute for attribute, _, _ in cls.attributes()})
+            if difference:
+                raise ValueError("Data contains unexpected attributes for {}: {}".format(
+                    cls.__name__, ", ".join(map(repr, difference))))
+
+        obj = cls()
+        default_converter = ConverterFrom(cls.__name__)
+
+        for attribute, attribute_type, params in cls.attributes():
+            # We can use obj as sentinel as well
+            value = data.get(attribute, obj)
+            if value is not obj:
+                if params.from_converter and not (is_nullable(attribute_type) and value is None):
+                    try:
+                        value = params.from_converter(value)
+                    except ValueError as e:
+                        raise ValueError("Failed to convert {} {}: {}".format(cls.__name__, attribute, e))
+
+                obj.__setattr__(attribute, default_converter.convert(attribute, attribute_type, value))
+            else:
+                if params.default.has_value:
+                    obj.__setattr__(attribute, params.default.value)
+                else:
+                    raise ValueError("No value for {} attribute {}".format(cls.__name__, attribute))
+
+        return obj
+
+    @classmethod
+    def attr(cls, attribute: str, attribute_type: Type[T] = None, **kwargs) -> T:
+        sentinel = object()
+        default = kwargs.pop("default", sentinel)
+        from_converter = kwargs.pop("from_converter", None)
+        if kwargs:
+            raise TypeError("Unexpected arguments provided: {}".format(", ".join(kwargs)))
+
+        if attribute_type:
+            validate_attribute_type(attribute, attribute_type)
+            if default is None and not is_nullable(attribute_type):
+                attribute_type = Optional[attribute_type]
+
+            def setter(self, value):
+                validate_attribute(self.__class__.__name__, attribute, attribute_type, value)
+                self.__dict__[attribute] = value
+        else:
+            def setter(self, value):
+                self.__dict__[attribute] = value
+
+        def getter(self):
+            return self.__dict__.get(attribute)
+
+        spec = (attribute, attribute_type, Params(
+            from_converter,
+            DefaultValue(False, None) if default is sentinel else DefaultValue(True, default)))
+        setattr(setter, cls._SPEC_FIELD, spec)
+        return property(getter, setter)
+
+    def to_dict(self):
+        default_converter = ConverterTo(self.__class__.__name__)
+        return {attribute: default_converter.convert(attribute, attribute_type, self.__dict__.get(attribute))
+                for attribute, attribute_type, _ in self.attributes()}
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            if not hasattr(self, k):
+                raise AttributeError("No such attribute '{}'".format(k))
+            self.__setattr__(k, v)
+
+    def __repr__(self):
+        return str(self.to_dict())
+
+
+class ConverterFrom(Converter):
+    _exception_type = ValueError
+    _struct_type = DataStruct
+
+    def _convert_data_struct(self, attribute_type, value):
+        return attribute_type.from_dict(value) if isinstance(value, dict) else value
+
+
+class ConverterTo(Converter):
+    _exception_type = RuntimeError
+    _struct_type = DataStruct
+
+    def _convert_data_struct(self, attribute_type, value):
+        return value.to_dict()
+
+
+class JSONStruct(DataStruct):
+    @classmethod
+    def load(cls, fp):
+        return cls.from_dict(json.load(fp))
+
+    @classmethod
+    def loads(cls, s):
+        return cls.from_dict(json.loads(s))
+
+    def dump(self, fp, **kwargs):
+        return json.dump(self.to_dict(), fp, **kwargs)
+
+    def dumps(self, **kwargs):
+        return json.dumps(self.to_dict(), **kwargs)
 
 
 def _cached(func):
