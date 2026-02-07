@@ -232,10 +232,10 @@ class AttributeTypeHandler(object):
         return value
 
     def _handle_extra(self, attribute, attribute_type, value):
-        raise NotImplemented("_handle_extra method must be implemented by subclasses")
+        raise NotImplementedError("_handle_extra method must be implemented by subclasses")
 
     def _handle_inner(self, parent_type, inner_values):
-        raise NotImplemented("_handle_inner method must be implemented by subclasses")
+        raise NotImplementedError("_handle_inner method must be implemented by subclasses")
 
     def _validate_instance(self, attribute, attribute_type, value):
         if not isinstance(value, attribute_type):
@@ -280,7 +280,7 @@ class Converter(AttributeTypeHandler):
         return parent_type(inner_values)
 
     def _convert_data_struct(self, attribute_type, value):
-        raise NotImplemented("Method must be implemented by subclasses")
+        raise NotImplementedError("Method must be implemented by subclasses")
 
 
 class ConverterFrom(Converter):
